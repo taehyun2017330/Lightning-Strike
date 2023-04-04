@@ -7,7 +7,7 @@ I plan to constantly update this REPO for my personal recording purposes or anyo
 HOWEVER Please, please, pretty please do not copy the code if you are a pesky SNU student, as this is repo is meant to document my personal growth not for an cheap way to cheat your courses... 
 
 # UIUC Courses
-AKA the prehistoric times when I rarely kept track of my code work and projects. Maybe I took the "Carpe Diem" way too seriously and have given too little thought to the future. I will try to scramble as many interesting projects (if I have even done any) to this folder
+AKA the prehistoric times when I rarely kept track of my code work and projects. I will try to scramble as many interesting projects (if I have even done any) to this folder
 
 + ECE 210
 + ECE 220
