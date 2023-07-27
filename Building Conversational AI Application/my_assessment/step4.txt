@@ -1,0 +1,4 @@
+results {
+  answer: "Europe, the Middle East and Africa."
+  score: 0.39971300959587097
+}

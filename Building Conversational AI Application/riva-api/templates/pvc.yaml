@@ -1,0 +1,35 @@
+{{ if .Values.persistentVolumeClaim.usePVC }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.persistentVolumeClaim.artifactClaimName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    name: {{ .Values.persistentVolumeClaim.artifactClaimName }}
+spec:
+{{- if .Values.persistentVolumeClaim.storageClassName }}
+  storageClassName: {{ .Values.persistentVolumeClaim.storageClassName }}
+{{- end }}
+  accessModes:
+  - {{ .Values.persistentVolumeClaim.storageAccessMode | default "ReadWriteOnce" }}
+  resources:
+    requests:
+      storage: {{ .Values.persistentVolumeClaim.storageSize | default "500Mi" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.persistentVolumeClaim.workdirClaimName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    name: {{ .Values.persistentVolumeClaim.workdirClaimName }}
+spec:
+{{- if .Values.persistentVolumeClaim.storageClassName }}
+  storageClassName: {{ .Values.persistentVolumeClaim.storageClassName }}
+{{- end }}
+  accessModes:
+  - {{ .Values.persistentVolumeClaim.storageAccessMode | default "ReadWriteOnce" }}
+  resources:
+    requests:
+      storage: {{ .Values.persistentVolumeClaim.storageSize | default "500Mi" }}
+{{ end }}

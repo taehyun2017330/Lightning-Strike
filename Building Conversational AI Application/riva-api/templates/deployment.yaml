@@ -1,0 +1,221 @@
+# Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#  * Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#  * Neither the name of NVIDIA CORPORATION nor the names of its
+#    contributors may be used to endorse or promote products derived
+#    from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+# OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+{{- $root := . }}
+{{- $artifacturl := "" }}
+{{- $image_version := "" }}
+{{- $model_version := "" }}
+{{- $server_image := "" }}
+{{- $servicemaker_image := "" }}
+{{- if (ne (len .Values.riva_ngc_team) 0) }}
+{{- $artifacturl = printf "%s/%s" .Values.riva_ngc_org .Values.riva_ngc_team }}
+{{- else }}
+{{- $artifacturl = printf "%s" .Values.riva_ngc_org }}
+{{- end }}
+{{- $image_version = printf "%s" .Values.riva_ngc_image_version }}
+{{- $model_version = printf "%s" .Values.riva_ngc_model_version }}
+{{- if .Values.raw_server_image }}
+{{- $server_image = printf "%s" .Values.raw_server_image }}
+{{- else }}
+{{- $server_image = printf "%s/%s/%s:%s" .Values.imageurl $artifacturl .Values.riva.speechImageName $image_version }}
+{{- end }}
+{{- if .Values.raw_servicemaker_image }}
+{{- $servicemaker_image = printf "%s" .Values.raw_servicemaker_image }}
+{{- else }}
+{{- $servicemaker_image = printf "%s/%s/%s:%s-servicemaker" .Values.imageurl $artifacturl .Values.modelRepoGenerator.imageName $image_version }}
+{{- end }}
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "riva-server.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ template "riva-server.name" . }}
+    chart: {{ template "riva-server.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "riva-server.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "riva-server.name" . }}
+        release: {{ .Release.Name }}
+
+    spec:
+      containers:
+        - name: riva-speech-api
+
+          image: {{ $server_image }}
+          imagePullPolicy: {{ .Values.riva.pullPolicy }}
+
+          resources:
+            limits:
+              nvidia.com/gpu: {{ .Values.riva.numGpus }}
+
+          command: ["/opt/riva/bin/start-riva"]
+          args:
+            {{- range $service, $enabled := .Values.riva.speechServices }}
+            - "--{{$service}}_service={{$enabled}}"
+            {{- end }}
+
+          env:
+            - name: TRTIS_MODEL_STORE
+              value: "/data/models"
+            - name: LD_PRELOAD
+              value: "{{- join ":" .Values.riva.trtPlugins }}"
+            {{- if .Values.rivaEnterprise.enabled }}
+            - name: RIVA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rivaEnterprise.ngcSecret}}
+                  key: apikey
+            - name: RIVA_API_NGC_ORG
+              value: {{ .Values.rivaEnterprise.ngcOrg }}
+            - name: RIVA_EULA
+              value: {{- if .Values.rivaEnterprise.acceptEula}}"accept"{{- else }}"decline"{{- end }}
+            {{- end }}
+
+          ports:
+            - containerPort: 50051
+              name: speech-grpc
+            - containerPort: 8000
+              name: http
+            - containerPort: 8001
+              name: grpc
+            - containerPort: 8002
+              name: metrics
+          readinessProbe:
+            exec:
+              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            initialDelaySeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            initialDelaySeconds: 10
+          startupProbe:
+            exec:
+              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            initialDelaySeconds: 10
+            failureThreshold: 12
+            periodSeconds: 10
+          volumeMounts:
+            - mountPath: /data/
+              name: workdir
+
+      imagePullSecrets:
+        - name: {{ .Values.modelRepoGenerator.imagePullSecret }}
+      {{- if (ne (len .Values.modelRepoGenerator.ngcModelConfigs) 0) }}
+      initContainers:
+        - name: riva-model-init
+          image: {{ $servicemaker_image }}
+          imagePullPolicy: {{ .Values.modelRepoGenerator.pullPolicy }}
+          resources:
+            limits:
+              nvidia.com/gpu: {{ .Values.riva.numGpus }}
+          volumeMounts:
+            - name: artifact-volume
+              mountPath: /rmir
+            - name: workdir
+              mountPath: /data/
+            {{- if .Values.modelRepoGenerator.modelTemplateVolume }}
+            - name: templatedir
+              mountPath: /templates/
+            {{- end }}
+          command:
+            - download_and_deploy_ngc_models
+            {{- if .Values.modelRepoGenerator.overwriteRMIRS }}
+            - "-d"
+            {{- end }}
+            {{- if .Values.modelRepoGenerator.overwriteModels }}
+            - "-x"
+            {{- end }}
+            {{- if .Values.modelRepoGenerator.clearAllRMIRSAndModels }}
+            - "-R"
+            {{- end }}
+            {{- if .Values.riva.speechServices.asr }}
+            {{- range .Values.modelRepoGenerator.ngcModelConfigs.asr }}
+            - "{{ $artifacturl }}/{{ . }}:{{ $model_version }}"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.riva.speechServices.nlp }}
+            {{- range .Values.modelRepoGenerator.ngcModelConfigs.nlp }}
+            - "{{ $artifacturl }}/{{ . }}:{{ $model_version }}"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.riva.speechServices.tts }}
+            {{- range .Values.modelRepoGenerator.ngcModelConfigs.tts }}
+            - "{{ $artifacturl }}/{{ . }}:{{ $model_version }}"
+            {{- end }}
+            {{- end }}
+          resources:
+            limits:
+              nvidia.com/gpu: {{ .Values.riva.numGpus }}
+          env:
+            - name: NGC_CLI_ORG
+              value: "nvidia"
+            - name: NGC_CLI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.modelRepoGenerator.ngcSecret}}
+                  key: apikey
+            - name: MODEL_DEPLOY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.modelRepoGenerator.modelDeploySecret }}
+                  key: key
+      {{- end }}
+
+      volumes:
+        - name: artifact-volume
+          {{- if .Values.persistentVolumeClaim.usePVC }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistentVolumeClaim.artifactClaimName }}
+          {{- else}}
+          {{- if .Values.modelRepoGenerator.artifactDeployVolume }}
+{{ tpl (toYaml .Values.modelRepoGenerator.artifactDeployVolume | indent 10) . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+          {{- end}}
+        - name: workdir
+          {{- if .Values.persistentVolumeClaim.usePVC }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistentVolumeClaim.workdirClaimName }}
+          {{- else}}
+          {{- if .Values.modelRepoGenerator.modelDeployVolume }}
+{{ tpl (toYaml .Values.modelRepoGenerator.modelDeployVolume | indent 10) . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+          {{- end}}
+          

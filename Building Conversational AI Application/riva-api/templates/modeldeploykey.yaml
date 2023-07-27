@@ -1,0 +1,10 @@
+{{- if (ne (len .Values.modelRepoGenerator.modelDeployKey) 0) }}
+apiVersion: v1
+kind: Secret
+data:
+  key: {{ .Values.modelRepoGenerator.modelDeployKey |  quote }}
+metadata:
+  creationTimestamp: null
+  name: riva-model-deploy-key
+  namespace: {{ .Release.Namespace }}
+{{- end -}}

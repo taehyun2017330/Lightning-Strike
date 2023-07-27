@@ -1,0 +1,3 @@
+language_code: "en-US"
+max_alternatives: 2
+enable_automatic_punctuation: true

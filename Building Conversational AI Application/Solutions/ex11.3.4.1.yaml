@@ -1,0 +1,180 @@
+# Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#  * Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#  * Neither the name of NVIDIA CORPORATION nor the names of its
+#    contributors may be used to endorse or promote products derived
+#    from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+# OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+replicaCount: 1
+
+imageurl: "nvcr.io"
+riva_ngc_org: "nvidia"
+riva_ngc_team: "riva"
+riva_ngc_image_version: "2.8.1"
+riva_ngc_model_version: "2.8.0"
+
+#for non ngc based images or custom images.
+raw_server_image: ""
+raw_servicemaker_image: ""
+
+riva:
+  speechImageName: riva-speech
+  pullPolicy: IfNotPresent
+  numGpus: 1  #changing this is currently experimental and may have undefined behaviour
+  speechServices:
+    asr: true
+    nlp: true
+    tts: true
+
+rivaEnterprise:
+  ngcSecret: rivadeploysecret
+  ngcOrg: your_org_name
+  acceptEula: false
+  enabled: false
+
+ngcCredentials:
+  registry: nvcr.io
+  username: $oauthtoken
+  password: 
+  email:
+
+modelRepoGenerator:
+  # k8s secrets required for connecting to NGC for model and container artifacts
+  imagePullSecret: imagepullsecret
+  ngcSecret: modelpullsecret
+  modelDeploySecret: riva-model-deploy-key
+  modelDeployKey:
+
+  # container to use for generating the model repositories
+  imageName: riva-speech
+  pullPolicy: IfNotPresent
+
+  # force redownload of artifacts
+  overwriteRMIRS: false
+  # rebuild inference engines
+  overwriteModels: false
+  # clear models before downloading and deploying
+  clearAllRMIRSAndModels: false
+
+  # Model Repo Generator config files stored in NGC
+  ngcModelConfigs:
+    asr:
+      # Conformer
+      # - rmir_asr_conformer_en_us_str
+      # - rmir_asr_conformer_en_us_ofl
+      # Citrinet
+      #- rmir_asr_citrinet_1024_en_us_str
+      #- rmir_asr_citrinet_1024_en_us_ofl
+      # Quartznet
+      #- rmir_asr_quartznet_en_us_str
+      #- rmir_asr_quartznet_en_us_ofl
+      # Jasper 
+      #- rmir_asr_jasper_en_us_str
+      #- rmir_asr_jasper_en_us_ofl
+      # Jasper with gpu decoder
+      #- rmir_asr_jasper_en_us_str_gpu_decoder
+      #- rmir_asr_jasper_en_us_ofl_gpu_decoder
+      # Jasper with gpu decoder best throughput config
+      #- rmir_asr_jasper_en_us_str_thr_gpu_decoder_arpa
+      # Speaker Diarization
+      #- rmir_diarizer_offline
+
+    nlp:
+      # - rmir_nlp_intent_slot_bert_base
+      # - rmir_nlp_question_answering_bert_base
+      # - rmir_nlp_punctuation_bert_base_en_us
+      # - rmir_nlp_text_classification_bert_base
+      # - rmir_nlp_named_entity_recognition_bert_base
+    tts:
+      # Multi-speaker model IPA
+      # - rmir_tts_fastpitch_hifigan_en_us_ipa
+      # Multi-speaker model ARPABET
+      #- rmir_tts_fastpitch_hifigan_en_us
+      # LJSpeech
+      #- rmir_tts_fastpitch_hifigan_ljspeech
+  # Location where the Model Repo Generator should write the model repository to
+  # Note: This volume is always mounted as `/data/` in the speech container
+  #       and the model repository path is `/data/models`. Extra plugins (for TRT)
+  #       that may be required are added to `/data/plugins`
+  # with hostpath set, the directory /data/riva needs to exist locally (mkdir -p /data/riva)
+
+  modelDeployVolume:
+    #emptyDir: {}
+    hostPath:
+      type: DirectoryOrCreate
+      path: /dli_workspace/riva-full-model-repo
+    # nfs:
+    #   server: 127.0.0.1
+    #   path: /export/rivamodels
+
+  artifactDeployVolume:
+    #emptyDir: {}
+    hostPath:
+      type: DirectoryOrCreate
+      path: /dli_workspace/riva-full-model-repo/
+
+persistentVolumeClaim:
+  usePVC: false
+  # configure storage on your cloud provider and use `storageClassName` for creating PVCs
+  storageClassName:
+  # configure storage on your cloud provider and use `storageAccessMode` for creating PVCs, by default `ReadWriteOnce`
+  storageAccessMode:
+  storageSize: 50Gi
+  artifactClaimName: riva-artifact-pvc
+  workdirClaimName: riva-workdir-pvc
+
+service:
+  type: NodePort
+  # configure `type: ClusterIP` in case of 'nginx'
+  # type: ClusterIP
+  nodeport: 32222
+
+# Optional setup to create an ingress controller and LoadBalancer
+# Ingress and LB need to be already installed and setup - this section just configures.
+# This example uses traefik (https://metallb.universe.tf/), modify to suit your needs.
+ingress:
+  # to use a default bare bones ingress controller.
+  useIngress: false
+  class: traefik
+  # should be the fqdn for your service.
+  hostname: riva.nvda
+  
+  #class: nginx
+  # tls secret name need to be provided to allow ingress validation in case `class: nginx`
+  tlsSecret: 
+  # configure if server wants to communicate only certain clients via  `corsOrigin` in case `class: nginx`
+  corsOrigin:
+
+
+
+
+# If your installation will expose the service outside of the kubernetes cluster
+# you will need to decide how to expose the service. If you use Loadbalancer and
+# are not in a cloud service provider your cluster needs some way of connecting a
+# service to an IP.
+# If you dont want to use a loadbalancer make sure to edit the service type above.
+# this section configures, but does not install metallb. (https://metallb.universe.tf/)
+loadbalancer:
+  # false - do nothing.  True sets up the ipRange as allocatable IP's to services.
+  useMetalLB: false
+  # the range of IP's available to your cluster. (ipRange: 192.168.1.240-192.168.1.250)
+  ipRange: 10.42.0.190-10.42.0.192

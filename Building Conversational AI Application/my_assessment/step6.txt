@@ -1,0 +1,5 @@
+['What Emea stands for. ', results {
+  answer: "a shorthand designation meaning Europe, the Middle East and Africa."
+  score: 0.32048299908638
+}
+, ' A ˈʃɔɹtˌhænd DESIGNATION ˈminɪŋ ˈjʊɹəp, THE ˈmɪdəɫ ˈist AND AFRICA. ']
